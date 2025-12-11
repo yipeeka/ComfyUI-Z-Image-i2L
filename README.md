@@ -19,6 +19,21 @@ This node allows you to "extract" style, composition, or details from any image 
 
 ---
 
+---
+
+## 🎨 Model Guide (Which one to use?)
+
+The Loader node lets you select a **Preset Mode**. Here is what they do:
+
+| Preset | Description | Best Use Case |
+| :--- | :--- | :--- |
+| **Style** | Extracts **colors, lighting, and artistic "vibe"** but ignores the object's shape. | "I want my image to look like a Van Gogh painting" or "Copy this color palette." |
+| **Coarse** | Extracts **structure, composition, and objects**. It copies *what* is in the image. | "I want to clone this character's pose and shape roughly." |
+| **Fine** | Extracts **high-frequency details and textures**. Usually used combined with Coarse. | "I want the exact skin texture or detailed fabric from this photo." |
+| **Bias** | A tiny alignment helper. | *Note: Usually not used alone for style transfer.* |
+
+---
+
 ## 📦 Installation
 
 ### **Method 1: ComfyUI Manager (Easy)**
