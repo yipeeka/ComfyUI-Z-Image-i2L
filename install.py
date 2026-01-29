@@ -10,10 +10,17 @@ def install_package(package_name):
         print(f"Failed to install {package_name}: {e}")
 
 if __name__ == "__main__":
-    print("Installing dependencies for Qwen-Image-i2L...")
-    install_package("diffsynth>=1.1.9")
-    install_package("huggingface_hub")
-    install_package("safetensors")
-    install_package("modelscope") 
+    print("Installing dependencies for Z-Image-i2L...")
+    
+    # Install core dependencies
+    requirements = [
+        "huggingface_hub",
+        "safetensors",
+        "modelscope",
+        "git+https://github.com/modelscope/DiffSynth-Studio.git"
+    ]
+    
+    for req in requirements:
+        install_package(req)
     
     print("\nInstallation complete. Please restart ComfyUI.")

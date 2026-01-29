@@ -1,9 +1,7 @@
-# ⚡ ComfyUI Qwen-i2L (Optimized Edition)
+# ⚡ ComfyUI Z-Image-i2L (Image-to-LoRA)
 
-A fully optimized ComfyUI custom node for **Qwen-Image-i2L** (Image-to-LoRA). 
-This node allows you to "extract" style, composition, or details from any image and save them as a lightweight **LoRA** (`.safetensors`) file.
-
-**Key Feature:** It converts the heavy 24GB+ VRAM requirement of the official pipeline into a stable **8GB VRAM** workflow using smart offloading and FP8 compression.
+A ComfyUI custom node for **Z-Image-i2L** (Image-to-LoRA). 
+This node allows you to "extract" style, composition, or details from any image and save them as a lightweight **LoRA** (`.safetensors`) file using the powerful Z-Image architecture.
 
 ---
 
@@ -12,63 +10,37 @@ This node allows you to "extract" style, composition, or details from any image 
 * **🧠 Smart VRAM Detection:** Automatically detects your GPU VRAM.
     * **< 16GB VRAM:** Automatically runs the heavy DINOv3 encoder on **CPU (RAM)** to prevent crashes.
     * **> 16GB VRAM:** Automatically uses **GPU** for maximum speed.
-* **📉 FP8 Model Support:** Built to work with highly compressed **FP8 models** (7GB vs 14GB), saving 50% VRAM with zero quality loss.
-* **💾 Smart Auto-Download:** Automatically pulls optimized models from the Hugging Face repository, so you don't need to manually hunt for files.
-* **🧹 VRAM Nuke:** Features a built-in safety mechanism that aggressively clears ComfyUI's VRAM cache before processing to ensure stability.
+* **📉 FP8 Model Support:** Compatible with FP8 models to save VRAM.
 * **✨ One-Click LoRA:** Takes an image input and outputs a ready-to-use LoRA file.
+
 ### 📂 Folder Structure & Model Placement
 
 You need to create a folder named `I2L` inside your `ComfyUI/models/` directory.
 
 **Path:** `ComfyUI/models/I2L/`
 
-Inside that folder, create two sub-folders: `CLIPS` and `LORA models`.
+Inside that folder, create two sub-folders: `CLIPS` and `Z-Image`.
 
 #### **1. The Vision Encoders (Required)**
 Place these inside: `ComfyUI/models/I2L/CLIPS/`
 
 | File Name | Description | Source |
 | :--- | :--- | :--- |
-| **`SigLIP2-G384.safetensors`** | Vision Encoder (Small) | [Download](https://huggingface.co/markasd/QWEN_I2L/blob/main/SigLIP2-G384.safetensors) |
-| **`DINOv3-7B.safetensors`** | Vision Encoder (Large) | [Download](https://huggingface.co/markasd/QWEN_I2L/blob/main/DINOv3-7B.safetensors) |
+| **`SigLIP2-G384.safetensors`** | Vision Encoder (Small) | [Download](https://huggingface.co/DiffSynth-Studio/General-Image-Encoders/blob/main/SigLIP2-G384/model.safetensors) |
+| **`DINOv3-7B.safetensors`** | Vision Encoder (Large) | [Download](https://huggingface.co/DiffSynth-Studio/General-Image-Encoders/blob/main/DINOv3-7B/model.safetensors) |
 
-#### **2. The Qwen Adapters (Pick what you need)**
-Place these inside: `ComfyUI/models/I2L/LORA models/`
+#### **2. The Z-Image Adapter**
+Place this inside: `ComfyUI/models/I2L/Z-Image/`
 
-| File Name | Mode | Size | Description |
-| :--- | :--- | :--- | :--- |
-| **`Qwen-Image-i2L-Style.safetensors`** | Style | ~4.8GB | Captures artistic style only. **Does not require manual CLIP.** |
-| **`Qwen-Image-i2L-Coarse.safetensors`** | Coarse | ~8-15GB | Captures structure/objects. **Requires manual CLIP.** |
-| **`Qwen-Image-i2L-Fine.safetensors`** | Fine | ~8-15GB | Captures fine details. **Requires manual CLIP.** |
-| **`Qwen-Image-i2L-Bias.safetensors`** | Bias | Helper for alignment. |  
---- 
- https://huggingface.co/markasd/QWEN_I2L/tree/main 
-
-
-## 🎨 Model Guide (Which one to use?)
-
-The Loader node lets you select a **Preset Mode**. Here is what they do:
-
-| Preset | Description | Best Use Case |
+| File Name | Description | Source |
 | :--- | :--- | :--- |
-| **Style** | Extracts **colors, lighting, and artistic "vibe"** but ignores the object's shape. | "I want my image to look like a Van Gogh painting" or "Copy this color palette." |
-| **Coarse** | Extracts **structure, composition, and objects**. It copies *what* is in the image. | "I want to clone this character's pose and shape roughly." |
-| **Fine** | Extracts **high-frequency details and textures**. Usually used combined with Coarse. | "I want the exact skin texture or detailed fabric from this photo." |
-| **Bias** | A tiny alignment helper. | *Note: Usually not used alone for style transfer.* |
+| **`Z-Image-i2L.safetensors`** | Z-Image i2L Model | [Download](https://modelscope.cn/models/DiffSynth-Studio/Z-Image-i2L) (Rename to `Z-Image-i2L.safetensors`) |
 
 ---
 
 ## 📦 Installation
 
-### **Method 1: ComfyUI Manager (Easy)**
-1.  Open ComfyUI Manager.
-2.  Click **"Install via Git URL"**.
-3.  Paste this link: 
-    ```bash
-    https://github.com/gajjar4/ComfyUI-Qwen-Image-i2L
-    ``` 
-    
-4.  Click Install and Restart ComfyUI.
+### **Method 1: ComfyUI Manager (Coming Soon)**
 
 ### **Method 2: Manual Installation**
 1.  Navigate to your custom nodes folder:
@@ -77,26 +49,14 @@ The Loader node lets you select a **Preset Mode**. Here is what they do:
     ```
 2.  Clone this repository:
     ```bash
-    git clone https://github.com/gajjar4/ComfyUI-Qwen-Image-i2L.git
+    git clone https://github.com/your-repo/ComfyUI-Z-Image-i2L.git
     ```
 3.  Install dependencies:
     ```bash
-    cd ComfyUI-Qwen-Image-i2L
+    cd ComfyUI-Z-Image-i2L
     pip install -r requirements.txt
     ```
 4.  Restart ComfyUI.
-
----
-
-## 🛠️ How It Works (The Pipeline)
-
-The generation process uses a complex chain of Vision Encoders and Adapters to "understand" your image:
-
-1.  **SigLIP (Vision Encoder):** "Looks" at the image to understand general semantics.
-2.  **DINOv3 (Vision Encoder):** The heavy lifter. It analyzes the deep structure, composition, and high-level details. 
-    * *Optimization:* This node intelligently offloads this 7GB giant to your System RAM if you have a small GPU (8GB/12GB cards).
-3.  **Qwen-i2L (Adapter):** Takes the vision data and calculates how to shift the Diffusion Model's weights to match the style.
-4.  **LoRA Generator:** Instead of retraining, it instantly saves these weight shifts as a `.safetensors` LoRA.
 
 ---
 
@@ -105,38 +65,27 @@ The generation process uses a complex chain of Vision Encoders and Adapters to "
 ### **Step 1: The "Factory" Workflow (Creating the LoRA)**
 *Use this workflow only to CREATE the file.*
 
-1.  **Add Node:** `Qwen Pipeline Loader`
-    * **Preset:** Choose `Style` (Art), `Coarse` (Shapes/Composition), or `Fine` (Details).
-    * *Note: First run will auto-download models (~7GB) to `ComfyUI/models/I2L`.*
-2.  **Add Node:** `Qwen i2L Apply`
-    * Connect `qwen_file_path` from the Loader.
+1.  **Add Node:** `Z-Image i2L Loader`
+    * Select `Z-Image-i2L.safetensors` (Ensure it is in `models/I2L/Z-Image`).
+2.  **Add Node:** `Z-Image i2L Apply`
+    * Connect `z_image_file_path` from the Loader.
     * Connect your **Style Image** to `images`.
-    * **Model Input:** Leave EMPTY (Disconnect it) to save VRAM.
+    * **Use CPU for Vision:** Enabled by default (Safe for 8GB VRAM). Disable if you have 24GB+ VRAM.
 3.  **Add Node:** `Save LoRA`
     * Connect `lora_data` from the Apply node.
     * Set your filename (e.g., `my_cool_style`).
 4.  **Queue Prompt:** Wait for the analysis to finish. It will save the file to `ComfyUI/output/loras/`.
 
 ### **Step 2: The "Generation" Workflow (Using the LoRA)**
-*Once you have the file, you don't need the Qwen nodes anymore.*
+*Once you have the file, you don't need the Z-Image nodes anymore.*
 
-1.  Load your standard Text-to-Image workflow (qwen)
+1.  Load your standard Text-to-Image workflow (compatible with the base model, likely Flux or Z-Image depending on what the LoRA is for).
 2.  Add a standard **Load LoRA** node.
 3.  Select the `my_cool_style.safetensors` you just created.
 4.  Generate images!
 
 ---
 
-## 📂 Folder Structure
-The node automatically manages models in your ComfyUI directory:
-`ComfyUI/models/I2L/`
-
-* `/CLIPS/`: Stores SigLIP and DINOv3 (FP8).
-* `/LORA models/`: Stores Qwen Adapters (Coarse, Fine, Style).
-
----
-
 ## 🤝 Credits
-* **Code & Optimization:** gajjar4
-* **Original Pipeline:** [DiffSynth-Studio](https://github.com/modelscope/DiffSynth-Studio)
-* **Optimized FP8 Models:** Hosted by `markasd`
+* **Original Code:** [ComfyUI-Qwen-Image-i2L](https://github.com/gajjar4/ComfyUI-Qwen-Image-i2L)
+* **Pipeline:** [DiffSynth-Studio](https://github.com/modelscope/DiffSynth-Studio)
