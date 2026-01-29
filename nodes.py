@@ -132,7 +132,7 @@ class ZImageI2L_Apply:
                 "z_image_file_path": ("ZI2L_FILE",),
                 "images": ("IMAGE",),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
-                "use_cpu_for_vision": ("BOOLEAN", {"default": True, "label": "Force CPU for Vision Encoders (Safe for 8GB VRAM)"}),
+                "use_cpu_for_vision": ("BOOLEAN", {"default": False, "label": "Force CPU for Vision Encoders (Safe for 8GB VRAM)"}),
             },
             "optional": {
                 "model": ("MODEL",),
