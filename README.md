@@ -7,17 +7,13 @@ This node allows you to "extract" style, composition, or details from any image 
 
 ## 🚀 Key Features
 
-* **🚀 Optimized VRAM Mode (Default):** Automatic GPU+CPU hybrid mode for optimal performance.
+* **🚀 Optimized VRAM Mode (Automatic):** GPU+CPU hybrid mode for optimal performance.
     * **SigLIP2 Encoder:** Runs entirely on GPU (fast, ~1.5GB VRAM).
     * **DINOv3 Encoder:** Uses FP8 storage + BF16 computation (dynamic offload, ~5.6GB VRAM).
     * **Z-Image Adapter:** Uses FP8 storage + BF16 computation (dynamic offload, ~1.6GB VRAM).
     * **Total VRAM:** ~10.7GB peak with 2GB safety buffer for 12GB GPUs.
     * **Performance:** **8-12x faster** than pure CPU mode.
-* **🛡️ CPU Mode (Optional):** Safe fallback for systems with < 8GB VRAM.
-    * Runs all encoders on CPU (slow but guaranteed to work).
-    * Uses ~2GB RAM instead of VRAM.
 * **📉 FP8 Quantization:** Automatically uses FP8 for storage to reduce VRAM usage by 50%.
-* **🔄 Backward Compatible:** Existing workflows work without modification.
 * **✨ One-Click LoRA:** Takes an image input and outputs a ready-to-use LoRA file.
 
 ### 📂 Folder Structure & Model Placement
@@ -69,43 +65,32 @@ Place this inside: `ComfyUI/models/I2L/Z-Image/`
 
 ## ⚡ Performance & Configuration
 
-### **Mode Comparison**
+### **Performance Specifications**
 
-| Mode | Setting | VRAM Usage | Speed | Quality | Best For |
-|------|----------|-------------|--------|----------|
-| **Optimized (Default)** | `use_cpu_for_vision=False` | ~10.7GB peak | Excellent | **12GB+ VRAM** (Recommended) |
-| **CPU Mode** | `use_cpu_for_vision=True` | ~2GB RAM | Excellent | < 8GB VRAM |
-
-### **Performance Expectations**
-
-| Task | Optimized Mode | CPU Mode | Speedup |
-|------|---------------|-----------|----------|
-| Single Image (512x512) | ~45-90 seconds | ~10-15 minutes | **8-12x** |
-| Batch of 4 Images | ~2-4 minutes | ~40-60 minutes | **8-12x** |
+| Metric | Value |
+|--------|-------|
+| **VRAM Usage** | ~10.7GB peak (with 2GB safety buffer) |
+| **Processing Time** | ~45-90 seconds (512x512 image) |
+| **Speedup vs CPU** | **8-12x faster** |
+| **Quality** | Excellent (BF16 computation) |
 
 ### **VRAM Requirements**
 
-| GPU VRAM | Recommended Mode | Notes |
-|----------|------------------|--------|
-| **< 8GB** | CPU Mode | Use `use_cpu_for_vision=True` |
-| **8-12GB** | Optimized Mode | May need to reduce batch size |
-| **12GB+** | Optimized Mode | ✅ Recommended - Full support |
-| **16GB+** | Optimized Mode | ✅ Best performance |
+| GPU VRAM | Support | Notes |
+|----------|---------|--------|
+| **< 8GB** | ❌ Not recommended | May not work properly |
+| **8-12GB** | ⚠️ Limited | May need to reduce batch size |
+| **12GB+** | ✅ Recommended | Full support with safety buffer |
+| **16GB+** | ✅ Best | Maximum performance headroom |
 
 ### **Configuration Details**
 
-**Optimized Mode (Default):**
+**Automatic Optimized Mode:**
 - **SigLIP2 (~1.5GB):** BF16, full GPU
 - **DINOv3-7B (~7GB):** FP8 storage + BF16 compute, dynamic GPU/CPU offload
 - **Z-Image (~2GB):** FP8 storage + BF16 compute, dynamic GPU/CPU offload
 - **VRAM Limit:** Automatically set to (Available VRAM - 2GB)
 - **Automatic Offloading:** Excess layers automatically offloaded to CPU when VRAM limit reached
-
-**CPU Mode:**
-- All encoders run on CPU
-- BF16 precision throughout
-- Uses ~2GB RAM instead of VRAM
-- Slower but guaranteed to work on any system
 
 ---
 
@@ -119,9 +104,7 @@ Place this inside: `ComfyUI/models/I2L/Z-Image/`
 2.  **Add Node:** `Z-Image i2L Apply`
     * Connect `z_image_file_path` from the Loader.
     * Connect your **Style Image** to `images`.
-    * **Use CPU for Vision (Optional):**
-        * **False (Default):** Optimized mode - Uses GPU+CPU hybrid for **8-12x faster** performance. Recommended for 12GB+ VRAM.
-        * **True:** Safe mode - Runs on CPU only. Slower but guaranteed to work. Use this if you have < 8GB VRAM.
+    * The node automatically uses optimized VRAM mode for best performance.
 3.  **Add Node:** `Save LoRA`
     * Connect `lora_data` from the Apply node.
     * Set your filename (e.g., `my_cool_style`).
