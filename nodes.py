@@ -26,37 +26,57 @@ if hasattr(torch, "cpu") and not hasattr(torch.cpu, "empty_cache"):
     torch.cpu.empty_cache = lambda: None
 # ----------------------------------
 
-class ForceCPUWrapper(nn.Module):
-    def __init__(self, original_module):
-        super().__init__()
-        self.original_module = original_module
+def create_optimized_configs(vram_available_gb):
+    """
+    生成 VRAM 优化的差异化配置
     
-    def forward(self, x, *args, **kwargs):
-        # Force input to CPU to avoid "Meta device" errors
-        if hasattr(x, "to") and hasattr(x, "device") and x.device.type != "cpu":
-            x = x.to("cpu")
-            
-        # Helper to move tensors to CPU
-        def to_cpu(obj):
-            if hasattr(obj, "to") and hasattr(obj, "device") and obj.device.type != "cpu":
-                return obj.to("cpu")
-            return obj
-
-        # Process args and kwargs to ensure CPU compatibility
-        args = tuple(to_cpu(arg) for arg in args)
-        kwargs = {k: to_cpu(v) for k, v in kwargs.items()}
-        
-        # CRITICAL FIX: Override device argument
-        # DiffSynth encoders default to "cuda" or get_device_type() in forward()
-        # We must explicitly force this to "cpu"
-        kwargs["device"] = "cpu"
-            
-        try:
-            return self.original_module(x, *args, **kwargs)
-        except TypeError:
-            # Fallback for modules that might not accept a 'device' kwarg
-            kwargs.pop("device", None)
-            return self.original_module(x, *args, **kwargs)
+    Args:
+        vram_available_gb: 可用 VRAM (GB)
+    
+    Returns:
+        siglip_config, dino_config, i2l_config, vram_limit_bytes
+    """
+    
+    # SigLIP2: 小模型 (~1.5GB)，全程 GPU
+    siglip_config = {
+        "offload_dtype": torch.bfloat16,
+        "offload_device": "cuda",
+        "onload_dtype": torch.bfloat16,
+        "onload_device": "cuda",
+        "preparing_dtype": torch.bfloat16,
+        "preparing_device": "cuda",
+        "computation_dtype": torch.bfloat16,
+        "computation_device": "cuda",
+    }
+    
+    # DINOv3: 大模型 (7B)，FP8 存储 + GPU 计算
+    dino_config = {
+        "offload_dtype": torch.float8_e4m3fn,
+        "offload_device": "cpu",
+        "onload_dtype": torch.float8_e4m3fn,
+        "onload_device": "cpu",
+        "preparing_dtype": torch.float8_e4m3fn,
+        "preparing_device": "cuda",
+        "computation_dtype": torch.bfloat16,
+        "computation_device": "cuda",
+    }
+    
+    # Z-Image: 中型模型 (~2GB)，FP8 存储 + GPU 计算
+    i2l_config = {
+        "offload_dtype": torch.float8_e4m3fn,
+        "offload_device": "cpu",
+        "onload_dtype": torch.float8_e4m3fn,
+        "onload_device": "cpu",
+        "preparing_dtype": torch.float8_e4m3fn,
+        "preparing_device": "cuda",
+        "computation_dtype": torch.bfloat16,
+        "computation_device": "cuda",
+    }
+    
+    # VRAM 限制: 可用 VRAM - 2GB 安全缓冲
+    vram_limit_bytes = (vram_available_gb - 2.0) * 1024**3
+    
+    return siglip_config, dino_config, i2l_config, vram_limit_bytes
 
 class ZImageI2L_Loader:
     @classmethod
@@ -133,6 +153,7 @@ class ZImageI2L_Apply:
                 "images": ("IMAGE",),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "use_cpu_for_vision": ("BOOLEAN", {"default": False, "label": "Force CPU for Vision Encoders (Safe for 8GB VRAM)"}),
+                "vram_optimization": ("BOOLEAN", {"default": True, "label": "Enable VRAM Optimization (Recommended for 12GB+)"}),
             },
             "optional": {
                 "model": ("MODEL",),
@@ -144,7 +165,7 @@ class ZImageI2L_Apply:
     FUNCTION = "apply_style"
     CATEGORY = "Z-Image-i2L"
 
-    def apply_style(self, z_image_file_path, images, strength, use_cpu_for_vision, model=None):
+    def apply_style(self, z_image_file_path, images, strength, use_cpu_for_vision, vram_optimization=True, model=None):
         if not DIFFSYNTH_AVAILABLE: 
             raise Exception("❌ DiffSynth-Studio not installed! Run: pip install git+https://github.com/modelscope/DiffSynth-Studio.git")
 
@@ -157,8 +178,69 @@ class ZImageI2L_Apply:
         except Exception as e:
             print(f"⚠️ Warning during cache clearing: {e}")
 
-        device_str = "cpu" if use_cpu_for_vision else "cuda"
-        mode_name = "SAFE (CPU)" if use_cpu_for_vision else "FAST (GPU)"
+        # 检测可用 VRAM
+        vram_available_gb = 0
+        if torch.cuda.is_available():
+            vram_total_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            vram_free_gb = torch.cuda.mem_get_info("cuda")[0] / (1024**3)
+            vram_available_gb = vram_free_gb
+            print(f"💾 VRAM Info: Total={vram_total_gb:.1f}GB, Free={vram_free_gb:.1f}GB")
+
+        # 向后兼容逻辑
+        if use_cpu_for_vision:
+            # 用户明确要求 CPU 模式 → 纯 CPU（慢速但安全）
+            mode_name = "SAFE (CPU)"
+            device_str = "cpu"
+            
+            # 统一 CPU 配置
+            unified_config = {
+                "offload_dtype": torch.bfloat16,
+                "offload_device": "cpu",
+                "onload_dtype": torch.bfloat16,
+                "onload_device": "cpu",
+                "preparing_dtype": torch.bfloat16,
+                "preparing_device": "cpu",
+                "computation_dtype": torch.bfloat16,
+                "computation_device": "cpu",
+            }
+            siglip_config = unified_config.copy()
+            dino_config = unified_config.copy()
+            i2l_config = unified_config.copy()
+            vram_limit_bytes = None
+            
+        else:
+            # 用户未要求 CPU 模式 → 使用 GPU 相关模式
+            device_str = "cuda"
+            
+            if vram_optimization and torch.cuda.is_available():
+                # 优化模式 (GPU+CPU 混合，FP8 存储)
+                mode_name = "OPTIMIZED (Dynamic GPU+CPU)"
+                
+                siglip_config, dino_config, i2l_config, vram_limit_bytes = create_optimized_configs(vram_available_gb)
+                
+                print(f"⚙️ VRAM Optimization Mode Enabled")
+                print(f"   VRAM Limit: {vram_limit_bytes / (1024**3):.1f}GB")
+                print(f"   SigLIP2: BF16 (GPU, ~1.5GB)")
+                print(f"   DINOv3: FP8 storage + BF16 compute (Dynamic, ~5.6GB)")
+                print(f"   Z-Image: FP8 storage + BF16 compute (Dynamic, ~1.6GB)")
+            else:
+                # 纯 GPU 模式（传统方式）
+                mode_name = "FAST (GPU)"
+                
+                unified_config = {
+                    "offload_dtype": torch.bfloat16,
+                    "offload_device": "cuda",
+                    "onload_dtype": torch.bfloat16,
+                    "onload_device": "cuda",
+                    "preparing_dtype": torch.bfloat16,
+                    "preparing_device": "cuda",
+                    "computation_dtype": torch.bfloat16,
+                    "computation_device": "cuda",
+                }
+                siglip_config = unified_config.copy()
+                dino_config = unified_config.copy()
+                i2l_config = unified_config.copy()
+                vram_limit_bytes = None
         
         print(f"\n{'='*60}")
         print(f"🎨 Z-Image i2L Apply - {mode_name}")
@@ -172,18 +254,6 @@ class ZImageI2L_Apply:
         siglip_path = os.path.join(clips_dir, "SigLIP2-G384.safetensors")
         dino_path = os.path.join(clips_dir, "DINOv3-7B.safetensors")
 
-        # Config for minimal VRAM usage
-        active_config = {
-            "offload_dtype": torch.bfloat16, 
-            "offload_device": "cpu",
-            "onload_dtype": torch.bfloat16, 
-            "onload_device": "cpu",
-            "preparing_dtype": torch.bfloat16, 
-            "preparing_device": device_str,
-            "computation_dtype": torch.bfloat16, 
-            "computation_device": device_str,
-        }
-
         # Convert ComfyUI images to PIL
         pil_images = []
         for img in images:
@@ -193,57 +263,61 @@ class ZImageI2L_Apply:
         try:
             print("\n📄 Loading Pipeline...")
             
-            # Build model configs list
+            # Build model configs list with differentiated configs
             model_configs = [
                 ModelConfig(
                     model_id="DiffSynth-Studio/General-Image-Encoders", 
                     origin_file_pattern=siglip_path, 
-                    **active_config
+                    **siglip_config
                 ),
                 ModelConfig(
                     model_id="DiffSynth-Studio/General-Image-Encoders", 
                     origin_file_pattern=dino_path, 
-                    **active_config
+                    **dino_config
                 ),
-                # Add i2L model
                 ModelConfig(
                     model_id="DiffSynth-Studio/Z-Image-i2L", 
                     origin_file_pattern=z_image_file_path, 
-                    **active_config
+                    **i2l_config
                 )
             ]
             
-            # Initialize Pipeline without loading unnecessary components (DiT, etc.)
-            pipe = ZImagePipeline.from_pretrained(
-                torch_dtype=torch.bfloat16,
-                device=device_str, 
-                model_configs=model_configs,
-                # We don't need text encoder or tokenizer for i2L extraction
-                tokenizer_config=None 
-            )
+            # Pipeline 初始化
+            pipeline_kwargs = {
+                "torch_dtype": torch.bfloat16,
+                "device": device_str,
+                "model_configs": model_configs,
+                "tokenizer_config": None
+            }
+
+            # 添加 vram_limit（仅在优化模式）
+            if vram_limit_bytes is not None:
+                pipeline_kwargs["vram_limit"] = vram_limit_bytes
+                print(f"🔧 Pipeline vram_limit set to {vram_limit_bytes / (1024**3):.1f}GB")
+
+            pipe = ZImagePipeline.from_pretrained(**pipeline_kwargs)
             
             print("✅ Pipeline Loaded Successfully\n")
-            
-            # Apply CPU wrappers if needed
-            if use_cpu_for_vision:
-                print("🛡️ Applying CPU wrappers to vision encoders...")
-                if hasattr(pipe, 'siglip2_image_encoder') and pipe.siglip2_image_encoder is not None:
-                    pipe.siglip2_image_encoder = ForceCPUWrapper(pipe.siglip2_image_encoder)
-                if hasattr(pipe, 'dinov3_image_encoder') and pipe.dinov3_image_encoder is not None:
-                    pipe.dinov3_image_encoder = ForceCPUWrapper(pipe.dinov3_image_encoder)
-                print("✅ CPU wrappers applied\n")
 
             print("🔍 Analyzing images...")
             with torch.no_grad():
-                # Encode images
-                # Z-Image uses specific units for this
+                # VRAM 监控（仅优化模式）
+                if vram_optimization and torch.cuda.is_available():
+                    vram_start = torch.cuda.memory_allocated() / (1024**3)
+                    print(f"   VRAM start: {vram_start:.2f}GB")
+                
+                # 编码图像
                 embs = ZImageUnit_Image2LoRAEncode().process(
                     pipe, 
                     image2lora_images=pil_images
                 )
                 print("✅ Images encoded\n")
                 
-                # Ensure tensors are on correct device
+                if vram_optimization and torch.cuda.is_available():
+                    vram_after_encode = torch.cuda.memory_allocated() / (1024**3)
+                    print(f"   VRAM after encode: {vram_after_encode:.2f}GB")
+                
+                # 确保张量在正确设备
                 forced_embs = {}
                 for k, v in embs.items():
                     if isinstance(v, torch.Tensor):
@@ -251,11 +325,15 @@ class ZImageI2L_Apply:
                     else:
                         forced_embs[k] = v
 
-                # Decode to LoRA weights
+                # 生成 LoRA 权重
                 print("⚙️ Generating LoRA weights...")
                 result = ZImageUnit_Image2LoRADecode().process(pipe, **forced_embs)
                 lora_weights = result["lora"]
                 print("✅ LoRA weights generated\n")
+                
+                if vram_optimization and torch.cuda.is_available():
+                    vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
+                    print(f"   VRAM peak: {vram_peak:.2f}GB")
 
             # Apply strength multiplier
             if strength != 1.0:
@@ -273,9 +351,27 @@ class ZImageI2L_Apply:
             print(f"❌ ERROR: Inference Failed (RuntimeError)")
             print(f"{'='*60}")
             print(f"Error: {e}\n")
+            
             if "device" in str(e).lower() or "type" in str(e).lower():
-                print("💡 SUGGESTION: You might be running out of VRAM or have a device mismatch.")
-                print("👉 Try enabling 'Force CPU for Vision Encoders' in the node settings.")
+                print("💡 Device mismatch detected.")
+                if not use_cpu_for_vision:
+                    print("👉 Try enabling 'Force CPU for Vision Encoders' in the node settings.")
+                if vram_optimization:
+                    print("👉 Or try disabling 'VRAM Optimization' to use traditional GPU mode.")
+            
+            if "out of memory" in str(e).lower() or "cuda out of memory" in str(e).lower():
+                print(f"💡 VRAM OOM Detected:")
+                if torch.cuda.is_available():
+                    vram_total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                    vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
+                    print(f"   Total VRAM: {vram_total:.1f}GB")
+                    print(f"   Peak Usage: {vram_peak:.1f}GB")
+                    print(f"   Shortage: {vram_peak - vram_total:.1f}GB")
+                print("👉 Solutions:")
+                print("   1. Enable 'Force CPU for Vision Encoders'")
+                print("   2. Disable 'VRAM Optimization'")
+                print("   3. Process images one at a time")
+            
             import traceback
             traceback.print_exc()
             lora_weights = {}
