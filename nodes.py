@@ -153,7 +153,6 @@ class ZImageI2L_Apply:
                 "images": ("IMAGE",),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "use_cpu_for_vision": ("BOOLEAN", {"default": False, "label": "Force CPU for Vision Encoders (Safe for 8GB VRAM)"}),
-                "vram_optimization": ("BOOLEAN", {"default": True, "label": "Enable VRAM Optimization (Recommended for 12GB+)"}),
             },
             "optional": {
                 "model": ("MODEL",),
@@ -165,7 +164,7 @@ class ZImageI2L_Apply:
     FUNCTION = "apply_style"
     CATEGORY = "Z-Image-i2L"
 
-    def apply_style(self, z_image_file_path, images, strength, use_cpu_for_vision, vram_optimization=True, model=None):
+    def apply_style(self, z_image_file_path, images, strength, use_cpu_for_vision, model=None):
         if not DIFFSYNTH_AVAILABLE: 
             raise Exception("❌ DiffSynth-Studio not installed! Run: pip install git+https://github.com/modelscope/DiffSynth-Studio.git")
 
@@ -186,7 +185,7 @@ class ZImageI2L_Apply:
             vram_available_gb = vram_free_gb
             print(f"💾 VRAM Info: Total={vram_total_gb:.1f}GB, Free={vram_free_gb:.1f}GB")
 
-        # 向后兼容逻辑
+        # 配置选择逻辑
         if use_cpu_for_vision:
             # 用户明确要求 CPU 模式 → 纯 CPU（慢速但安全）
             mode_name = "SAFE (CPU)"
@@ -209,38 +208,17 @@ class ZImageI2L_Apply:
             vram_limit_bytes = None
             
         else:
-            # 用户未要求 CPU 模式 → 使用 GPU 相关模式
+            # 默认使用优化模式 (GPU+CPU 混合，FP8 存储)
+            mode_name = "OPTIMIZED (Dynamic GPU+CPU)"
             device_str = "cuda"
             
-            if vram_optimization and torch.cuda.is_available():
-                # 优化模式 (GPU+CPU 混合，FP8 存储)
-                mode_name = "OPTIMIZED (Dynamic GPU+CPU)"
-                
-                siglip_config, dino_config, i2l_config, vram_limit_bytes = create_optimized_configs(vram_available_gb)
-                
-                print(f"⚙️ VRAM Optimization Mode Enabled")
-                print(f"   VRAM Limit: {vram_limit_bytes / (1024**3):.1f}GB")
-                print(f"   SigLIP2: BF16 (GPU, ~1.5GB)")
-                print(f"   DINOv3: FP8 storage + BF16 compute (Dynamic, ~5.6GB)")
-                print(f"   Z-Image: FP8 storage + BF16 compute (Dynamic, ~1.6GB)")
-            else:
-                # 纯 GPU 模式（传统方式）
-                mode_name = "FAST (GPU)"
-                
-                unified_config = {
-                    "offload_dtype": torch.bfloat16,
-                    "offload_device": "cuda",
-                    "onload_dtype": torch.bfloat16,
-                    "onload_device": "cuda",
-                    "preparing_dtype": torch.bfloat16,
-                    "preparing_device": "cuda",
-                    "computation_dtype": torch.bfloat16,
-                    "computation_device": "cuda",
-                }
-                siglip_config = unified_config.copy()
-                dino_config = unified_config.copy()
-                i2l_config = unified_config.copy()
-                vram_limit_bytes = None
+            siglip_config, dino_config, i2l_config, vram_limit_bytes = create_optimized_configs(vram_available_gb)
+            
+            print(f"⚙️ VRAM Optimization Mode Enabled")
+            print(f"   VRAM Limit: {vram_limit_bytes / (1024**3):.1f}GB")
+            print(f"   SigLIP2: BF16 (GPU, ~1.5GB)")
+            print(f"   DINOv3: FP8 storage + BF16 compute (Dynamic, ~5.6GB)")
+            print(f"   Z-Image: FP8 storage + BF16 compute (Dynamic, ~1.6GB)")
         
         print(f"\n{'='*60}")
         print(f"🎨 Z-Image i2L Apply - {mode_name}")
@@ -302,7 +280,7 @@ class ZImageI2L_Apply:
             print("🔍 Analyzing images...")
             with torch.no_grad():
                 # VRAM 监控（仅优化模式）
-                if vram_optimization and torch.cuda.is_available():
+                if not use_cpu_for_vision and torch.cuda.is_available():
                     vram_start = torch.cuda.memory_allocated() / (1024**3)
                     print(f"   VRAM start: {vram_start:.2f}GB")
                 
@@ -313,7 +291,7 @@ class ZImageI2L_Apply:
                 )
                 print("✅ Images encoded\n")
                 
-                if vram_optimization and torch.cuda.is_available():
+                if not use_cpu_for_vision and torch.cuda.is_available():
                     vram_after_encode = torch.cuda.memory_allocated() / (1024**3)
                     print(f"   VRAM after encode: {vram_after_encode:.2f}GB")
                 
@@ -331,7 +309,7 @@ class ZImageI2L_Apply:
                 lora_weights = result["lora"]
                 print("✅ LoRA weights generated\n")
                 
-                if vram_optimization and torch.cuda.is_available():
+                if not use_cpu_for_vision and torch.cuda.is_available():
                     vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
                     print(f"   VRAM peak: {vram_peak:.2f}GB")
 
@@ -356,8 +334,6 @@ class ZImageI2L_Apply:
                 print("💡 Device mismatch detected.")
                 if not use_cpu_for_vision:
                     print("👉 Try enabling 'Force CPU for Vision Encoders' in the node settings.")
-                if vram_optimization:
-                    print("👉 Or try disabling 'VRAM Optimization' to use traditional GPU mode.")
             
             if "out of memory" in str(e).lower() or "cuda out of memory" in str(e).lower():
                 print(f"💡 VRAM OOM Detected:")
@@ -369,8 +345,7 @@ class ZImageI2L_Apply:
                     print(f"   Shortage: {vram_peak - vram_total:.1f}GB")
                 print("👉 Solutions:")
                 print("   1. Enable 'Force CPU for Vision Encoders'")
-                print("   2. Disable 'VRAM Optimization'")
-                print("   3. Process images one at a time")
+                print("   2. Process images one at a time")
             
             import traceback
             traceback.print_exc()
